@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive MLP Visualization</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+  <style>
+    :root {
+      --primary-color: #007aff;
+      --secondary-color: #5ac8fa;
+      --accent-color: #ff2d55;
+      --light-color: #ffffff;
+      --dark-color: #1c1c1e;
+      --success-color: #34c759;
+      --info-color: #007aff;
+      --warning-color: #ffcc00;
+      --danger-color: #ff3b30;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+      line-height: 1.6;
+      color: var(--dark-color);
+      background: url('https://images4.alphacoders.com/136/1360814.png') center/cover no-repeat fixed;
+      overflow-x: hidden;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      height: calc(100vh - 40px);
+      width: calc(100% - 40px);
+      margin: 20px;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Sidebar */
+    .sidebar {
+      background: rgba(255, 255, 255, 0.5);
+      backdrop-filter: blur(20px);
+      border-right: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 2rem;
+      overflow-y: auto;
+    }
+    .sidebar h1 {
+      margin-bottom: 1rem;
+      color: var(--primary-color);
+    }
+    .sidebar h2 {
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+      font-size: 1.15rem;
+      color: var(--primary-color);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+      padding-bottom: 0.25rem;
+    }
+    .sidebar h3 {
+      margin-top: 1rem;
+      margin-bottom: 0.5rem;
+      color: var(--primary-color);
+      font-size: 1rem;
+    }
+    .sidebar p {
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      color: #333;
+    }
+
+    /* Panels inside the sidebar */
+    .control-panel {
+      background: rgba(255, 255, 255, 0.4);
+      backdrop-filter: blur(10px);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.5);
+    }
+
+    /* Main panel */
+    .main-panel {
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      background: rgba(255, 255, 255, 0.4);
+      backdrop-filter: blur(10px);
+      overflow: hidden;
+    }
+
+    #network-container {
+      flex: 1;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      position: relative;
+    }
+
+    /* Basic form elements */
+    select, input {
+      padding: 0.5rem;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 0.9rem;
+      width: 100%;
+      background: rgba(255,255,255,0.9);
+      transition: background 0.2s;
+    }
+    select:focus, input:focus {
+      background: rgba(255,255,255,1);
+      outline: none;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.25rem;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+    .form-row {
+      margin-bottom: 1rem;
+    }
+
+    /* Buttons */
+    button {
+      background-color: var(--primary-color);
+      color: var(--light-color);
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.2s;
+      font-size: 0.9rem;
+    }
+    button:hover {
+      background-color: var(--secondary-color);
+      transform: translateY(-2px);
+    }
+    button.active {
+      background-color: var(--accent-color);
+    }
+
+    /* Smaller control groups */
+    .weight-controls,
+    .regularization-controls {
+      background: rgba(255, 255, 255, 0.3);
+      backdrop-filter: blur(8px);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+
+    .mini-control {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .mini-control label {
+      width: 50%;
+      margin-bottom: 0;
+    }
+    .mini-control input, .mini-control select {
+      width: 50%;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .controls-footer {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255,255,255,0.4);
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    /* Input matrix */
+    .input-matrix {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+    }
+    .input-matrix td {
+      padding: 0.25rem;
+    }
+    .input-matrix input {
+      width: 100%;
+      padding: 0.25rem;
+      font-size: 0.85rem;
+    }
+    .input-cell {
+      width: 60px;
+      text-align: center;
+    }
+
+    /* Network panel and SVG */
+    #network-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: absolute;
+      padding: 10px;
+      background-color: rgba(255, 255, 255, 0.9);
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      pointer-events: none;
+      font-size: 0.85rem;
+      z-index: 20;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      transition: opacity 0.2s;
+    }
+
+    /* Node and link styling */
+    .node {
+      cursor: pointer;
+    }
+    .link {
+      stroke-width: 2px;
+      stroke-opacity: 0.4;
+    }
+
+    /* Performance indicator & zoom controls */
+    #performance-indicator {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-size: 0.8rem;
+      color: var(--info-color);
+      background: rgba(255, 255, 255, 0.8);
+      padding: 5px 10px;
+      border-radius: 8px;
+      z-index: 15;
+    }
+    .zoom-controls {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      z-index: 15;
+    }
+    .zoom-controls button {
+      width: 40px;
+      height: 40px;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .node-enter {
+      animation: fadeIn 0.5s ease-out;
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 1000px) {
+      .container {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+      .sidebar {
+        height: auto;
+        max-height: 40vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="control-header">
+        <h1>MLP Visualization</h1>
+      </div>
+      <div class="control-panel">
+        <div class="form-row">
+          <label for="activation-function">Activation Function</label>
+          <select id="activation-function">
+            <option value="relu">ReLU</option>
+            <option value="sigmoid">Sigmoid</option>
+            <option value="tanh">Tanh</option>
+            <option value="leaky_relu">Leaky ReLU</option>
+            <option value="swish">Swish</option>
+            <option value="gelu">GELU</option>
+          </select>
+        </div>
+        <div class="network-structure">
+          <h2>Network Structure</h2>
+          <div class="btn-group">
+            <button id="add-layer">Add Layer</button>
+            <button id="remove-layer">Remove Layer</button>
+          </div>
+          <div id="layers-config"></div>
+        </div>
+        <div class="input-layer">
+          <h2>Input Layer</h2>
+          <div id="input-matrix-container"></div>
+        </div>
+        <div class="weight-controls">
+          <div class="mini-control">
+            <label for="weight-range">Weight Range</label>
+            <input type="number" id="weight-range" min="0.1" max="2" step="0.1" value="0.5">
+          </div>
+          <div class="mini-control">
+            <label for="weight-distribution">Distribution</label>
+            <select id="weight-distribution">
+              <option value="uniform">Uniform</option>
+              <option value="normal">Normal</option>
+              <option value="xavier">Xavier</option>
+              <option value="he">He</option>
+            </select>
+          </div>
+        </div>
+        <div class="regularization-controls">
+          <h2>Regularization & Normalization</h2>
+          <div class="mini-control">
+            <label for="dropout-rate">Dropout Rate</label>
+            <input type="number" id="dropout-rate" min="0" max="0.9" step="0.1" value="0.0">
+          </div>
+          <div class="mini-control">
+            <label for="batch-norm">Batch Normalization</label>
+            <select id="batch-norm">
+              <option value="off" selected>Off</option>
+              <option value="on">On</option>
+            </select>
+          </div>
+        </div>
+        <div class="controls-footer">
+          <button id="randomize">Randomize Weights</button>
+          <button id="reset">Reset Network</button>
+        </div>
+      </div>
+      <div id="mlp-description">
+        <h2>How the MLP Works</h2>
+        <p>The Multi-Layer Perceptron (MLP) is a feedforward neural network that transforms input data through multiple layers using weights, biases, and activation functions.</p>
+        <p>Each layer computes a weighted sum of its inputs, adds a bias, and passes the result through a non-linear activation function. Regularization techniques such as dropout and batch normalization help improve performance and prevent overfitting.</p>
+        <h3>Activation Function</h3>
+        <p>This function introduces non-linearity. The chart below shows the current activation function's curve.</p>
+        <div id="activation-chart"></div>
+        <h3>Forward Pass</h3>
+        <p>Data flows from the input layer through hidden layers to the output layer, with each layer transforming its inputs in real time.</p>
+        <h3>Weight Initialization & Regularization</h3>
+        <p>Weights are initialized using various strategies to speed up convergence. Dropout randomly deactivates neurons and batch normalization standardizes layer inputs.</p>
+      </div>
+    </div>
+
+    <!-- Main Panel -->
+    <div class="main-panel">
+      <div id="network-container">
+        <svg id="network-svg"></svg>
+        <div id="performance-indicator"></div>
+        <div class="zoom-controls">
+          <button id="zoom-in">+</button>
+          <button id="zoom-out">-</button>
+          <button id="zoom-reset">⟲</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    class MLPVisualization {
+      constructor() {
+        this.config = { layers: [4, 6, 5, 3], activationFunction: 'relu', weightRange: 0.5, weightDistribution: 'uniform', dropoutRate: 0.0, batchNormalization: false };
+        this.weights = [];
+        this.biases = [];
+        this.activations = [];
+        this.weightedSums = [];
+        this.inputValues = [];
+        this.svg = d3.select('#network-svg');
+        this.width = 0;
+        this.height = 0;
+        this.zoom = null;
+        this.tooltip = null;
+        this.init();
+        this.lastUpdateTime = performance.now();
+        this.updateCount = 0;
+        this.fpsUpdateInterval = null;
+      }
+      init() {
+        this.setupEventListeners();
+        this.initializeNetwork();
+        this.renderInputControls();
+        this.renderLayerControls();
+        this.initializeVisualization();
+        this.startPerformanceTracking();
+        this.updateNetwork();
+        this.updateActivationChart();
+      }
+      setupEventListeners() {
+        document.getElementById('activation-function').addEventListener('change', (e) => {
+          this.config.activationFunction = e.target.value;
+          this.updateNetwork();
+          this.updateActivationChart();
+        });
+        document.getElementById('add-layer').addEventListener('click', () => {
+          if (this.config.layers.length < 8) {
+            const newSize = Math.max(3, Math.floor(this.config.layers[this.config.layers.length - 1] * 0.8));
+            this.config.layers.splice(this.config.layers.length - 1, 0, newSize);
+            this.initializeNetwork();
+            this.renderLayerControls();
+            this.updateNetwork();
+          }
+        });
+        document.getElementById('remove-layer').addEventListener('click', () => {
+          if (this.config.layers.length > 3) {
+            this.config.layers.splice(this.config.layers.length - 2, 1);
+            this.initializeNetwork();
+            this.renderLayerControls();
+            this.updateNetwork();
+          }
+        });
+        document.getElementById('randomize').addEventListener('click', () => {
+          this.initializeWeightsAndBiases();
+          this.updateNetwork();
+        });
+        document.getElementById('reset').addEventListener('click', () => {
+          this.config.layers = [4, 6, 5, 3];
+          document.getElementById('activation-function').value = 'relu';
+          this.config.activationFunction = 'relu';
+          document.getElementById('weight-range').value = 0.5;
+          this.config.weightRange = 0.5;
+          document.getElementById('weight-distribution').value = 'uniform';
+          this.config.weightDistribution = 'uniform';
+          document.getElementById('dropout-rate').value = 0.0;
+          this.config.dropoutRate = 0.0;
+          document.getElementById('batch-norm').value = 'off';
+          this.config.batchNormalization = false;
+          this.initializeNetwork();
+          this.renderInputControls();
+          this.renderLayerControls();
+          this.updateNetwork();
+        });
+        document.getElementById('weight-range').addEventListener('change', (e) => {
+          this.config.weightRange = parseFloat(e.target.value);
+          this.initializeWeightsAndBiases();
+          this.updateNetwork();
+        });
+        document.getElementById('weight-distribution').addEventListener('change', (e) => {
+          this.config.weightDistribution = e.target.value;
+          this.initializeWeightsAndBiases();
+          this.updateNetwork();
+        });
+        document.getElementById('dropout-rate').addEventListener('change', (e) => {
+          this.config.dropoutRate = parseFloat(e.target.value);
+          this.updateNetwork();
+        });
+        document.getElementById('batch-norm').addEventListener('change', (e) => {
+          this.config.batchNormalization = e.target.value === 'on';
+          this.updateNetwork();
+        });
+        document.getElementById('zoom-in').addEventListener('click', () => {
+          this.svg.transition().duration(300).call(this.zoom.scaleBy, 1.3);
+        });
+        document.getElementById('zoom-out').addEventListener('click', () => {
+          this.svg.transition().duration(300).call(this.zoom.scaleBy, 0.7);
+        });
+        document.getElementById('zoom-reset').addEventListener('click', () => {
+          this.svg.transition().duration(500).call(this.zoom.transform, d3.zoomIdentity);
+        });
+        window.addEventListener('resize', this.handleResize.bind(this));
+      }
+      initializeNetwork() {
+        this.initializeWeightsAndBiases();
+        this.initializeActivations();
+      }
+      initializeWeightsAndBiases() {
+        this.weights = [];
+        this.biases = [];
+        for (let i = 1; i < this.config.layers.length; i++) {
+          const prevLayerSize = this.config.layers[i - 1];
+          const currentLayerSize = this.config.layers[i];
+          const weightMatrix = [];
+          for (let j = 0; j < currentLayerSize; j++) {
+            const neuronWeights = [];
+            for (let k = 0; k < prevLayerSize; k++) {
+              neuronWeights.push(this.generateRandomWeight(prevLayerSize));
+            }
+            weightMatrix.push(neuronWeights);
+          }
+          this.weights.push(weightMatrix);
+          const biasVector = [];
+          for (let j = 0; j < currentLayerSize; j++) {
+            biasVector.push(this.generateRandomWeight(prevLayerSize) / 2);
+          }
+          this.biases.push(biasVector);
+        }
+      }
+      generateRandomWeight(fanIn) {
+        const range = this.config.weightRange;
+        switch (this.config.weightDistribution) {
+          case 'uniform': return (Math.random() * 2 - 1) * range;
+          case 'normal':
+            const u1 = Math.random(), u2 = Math.random();
+            const randStdNormal = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
+            return randStdNormal * range / 3;
+          case 'xavier':
+            const xavierRange = Math.sqrt(6.0 / (fanIn + this.config.layers[this.weights.length + 1]));
+            return (Math.random() * 2 - 1) * xavierRange;
+          case 'he':
+            const heRange = Math.sqrt(2.0 / fanIn);
+            return (Math.random() * 2 - 1) * heRange;
+          default: return (Math.random() * 2 - 1) * range;
+        }
+      }
+      initializeActivations() {
+        this.activations = [];
+        this.weightedSums = [];
+        this.inputValues = Array(this.config.layers[0]).fill(0.5);
+        for (let i = 0; i < this.config.layers.length; i++) {
+          this.activations.push(Array(this.config.layers[i]).fill(0));
+          this.weightedSums.push(Array(this.config.layers[i]).fill(0));
+        }
+      }
+      renderInputControls() {
+        const container = document.getElementById('input-matrix-container');
+        container.innerHTML = '';
+        const table = document.createElement('table');
+        table.className = 'input-matrix';
+        const inputSize = this.config.layers[0];
+        const tr = document.createElement('tr');
+        for (let i = 0; i < inputSize; i++) {
+          const td = document.createElement('td');
+          td.className = 'input-cell';
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.min = -10;
+          input.max = 10;
+          input.step = 0.1;
+          input.value = this.inputValues[i];
+          input.addEventListener('input', (e) => {
+            this.inputValues[i] = parseFloat(e.target.value) || 0;
+            this.updateNetwork();
+          });
+          td.appendChild(input);
+          tr.appendChild(td);
+        }
+        table.appendChild(tr);
+        container.appendChild(table);
+      }
+      renderLayerControls() {
+        const container = document.getElementById('layers-config');
+        container.innerHTML = '';
+        for (let i = 0; i < this.config.layers.length; i++) {
+          const layerDiv = document.createElement('div');
+          layerDiv.className = 'layer-container';
+          const layerHeader = document.createElement('div');
+          layerHeader.className = 'layer-controls';
+          const layerLabel = document.createElement('span');
+          layerLabel.textContent = i === 0 ? 'Input Layer' : i === this.config.layers.length - 1 ? 'Output Layer' : `Hidden Layer ${i}`;
+          const sizeControl = document.createElement('div');
+          sizeControl.className = 'mini-control';
+          const sizeLabel = document.createElement('label');
+          sizeLabel.textContent = 'Neurons:';
+          const sizeInput = document.createElement('input');
+          sizeInput.type = 'number';
+          sizeInput.min = i === 0 || i === this.config.layers.length - 1 ? 1 : 2;
+          sizeInput.max = 16;
+          sizeInput.value = this.config.layers[i];
+          sizeInput.addEventListener('change', (e) => {
+            const newSize = parseInt(e.target.value);
+            if (newSize >= sizeInput.min && newSize <= sizeInput.max) {
+              this.config.layers[i] = newSize;
+              this.initializeNetwork();
+              if (i === 0) { this.renderInputControls(); }
+              this.updateNetwork();
+            } else { sizeInput.value = this.config.layers[i]; }
+          });
+          sizeControl.appendChild(sizeLabel);
+          sizeControl.appendChild(sizeInput);
+          layerHeader.appendChild(layerLabel);
+          layerHeader.appendChild(sizeControl);
+          layerDiv.appendChild(layerHeader);
+          container.appendChild(layerDiv);
+        }
+      }
+      initializeVisualization() {
+        const container = document.getElementById('network-container');
+        this.width = container.clientWidth;
+        this.height = container.clientHeight;
+        this.svg.attr('width', this.width).attr('height', this.height);
+        this.tooltip = d3.select('body').append('div').attr('class', 'tooltip').style('opacity', 0);
+        this.zoom = d3.zoom().scaleExtent([0.1, 4]).on('zoom', (event) => {
+          d3.select('#network-svg g').attr('transform', event.transform);
+        });
+        this.svg.call(this.zoom);
+        this.svg.append('g').attr('id', 'network-group');
+        this.updateVisualization();
+      }
+      updateNetwork() {
+        this.activations[0] = [...this.inputValues];
+        for (let i = 1; i < this.config.layers.length; i++) {
+          const layerSize = this.config.layers[i];
+          const prevLayerSize = this.config.layers[i - 1];
+          let rawSums = [];
+          for (let j = 0; j < layerSize; j++) {
+            let sum = this.biases[i - 1][j];
+            for (let k = 0; k < prevLayerSize; k++) {
+              sum += this.activations[i - 1][k] * this.weights[i - 1][j][k];
+            }
+            rawSums.push(sum);
+          }
+          this.weightedSums[i] = rawSums.slice();
+          if (this.config.batchNormalization) {
+            const epsilon = 1e-6;
+            const mean = rawSums.reduce((a, b) => a + b, 0) / rawSums.length;
+            const variance = rawSums.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / rawSums.length;
+            const std = Math.sqrt(variance + epsilon);
+            rawSums = rawSums.map(x => (x - mean) / std);
+          }
+          this.activations[i] = rawSums.map((value, j) => {
+            let activated = this.applyActivation(value);
+            if (this.config.dropoutRate > 0 && i < this.config.layers.length - 1) {
+              if (Math.random() < this.config.dropoutRate) { activated = 0; }
+            }
+            return activated;
+          });
+        }
+        this.updateVisualization();
+        this.updateCount++;
+        const now = performance.now();
+        if (now - this.lastUpdateTime > 1000) {
+          const fps = Math.round((this.updateCount * 1000) / (now - this.lastUpdateTime));
+          document.getElementById('performance-indicator').textContent = `${fps} FPS`;
+          this.updateCount = 0;
+          this.lastUpdateTime = now;
+        }
+      }
+      applyActivation(x) {
+        switch (this.config.activationFunction) {
+          case 'relu': return Math.max(0, x);
+          case 'sigmoid': return 1 / (1 + Math.exp(-x));
+          case 'tanh': return Math.tanh(x);
+          case 'leaky_relu': return x > 0 ? x : 0.01 * x;
+          case 'swish': return x / (1 + Math.exp(-x));
+          case 'gelu': return 0.5 * x * (1 + Math.tanh(Math.sqrt(2/Math.PI) * (x + 0.044715 * Math.pow(x, 3))));
+          default: return Math.max(0, x);
+        }
+      }
+      updateVisualization() {
+        const networkGroup = d3.select('#network-group');
+        networkGroup.selectAll('*').remove();
+        const verticalPadding = 50, horizontalPadding = 100;
+        const layerWidth = this.width - 2 * horizontalPadding;
+        const layerSpacing = layerWidth / (this.config.layers.length - 1);
+        const baseNodeSize = 15;
+        const maxNodes = Math.max(...this.config.layers);
+        const nodeScaleFactor = Math.min(1, 12 / maxNodes);
+        const nodes = [], links = [];
+        const maxLayerHeight = this.height - 2 * verticalPadding;
+        for (let i = 0; i < this.config.layers.length; i++) {
+          const layerSize = this.config.layers[i];
+          const layerHeight = maxLayerHeight * Math.min(1, 15 / layerSize);
+          const spacing = layerHeight / (layerSize - 1 || 1);
+          const startY = (this.height - layerHeight) / 2;
+          for (let j = 0; j < layerSize; j++) {
+            const node = {
+              id: `${i}-${j}`,
+              layer: i,
+              index: j,
+              x: horizontalPadding + i * layerSpacing,
+              y: layerSize === 1 ? this.height / 2 : startY + j * spacing,
+              value: this.activations[i][j],
+              rawValue: i > 0 ? this.weightedSums[i][j] : null,
+              radius: baseNodeSize * nodeScaleFactor,
+              isInput: i === 0,
+              isOutput: i === this.config.layers.length - 1
+            };
+            nodes.push(node);
+            if (i > 0) {
+              for (let k = 0; k < this.config.layers[i - 1]; k++) {
+                const weight = this.weights[i - 1][j][k];
+                links.push({ source: `${i-1}-${k}`, target: `${i}-${j}`, value: weight, sourceLayer: i - 1, targetLayer: i, sourceIndex: k, targetIndex: j });
+              }
+            }
+          }
+        }
+        const linkGroup = networkGroup.append('g').attr('class', 'links');
+        linkGroup.selectAll('.link')
+          .data(links)
+          .enter()
+          .append('line')
+          .attr('class', 'link')
+          .attr('x1', d => nodes.find(n => n.id === d.source).x)
+          .attr('y1', d => nodes.find(n => n.id === d.source).y)
+          .attr('x2', d => nodes.find(n => n.id === d.target).x)
+          .attr('y2', d => nodes.find(n => n.id === d.target).y)
+          .style('stroke', d => d.value > 0 ? 'rgba(0,122,255,0.5)' : 'rgba(255,59,48,0.5)')
+          .style('stroke-width', d => Math.abs(d.value) * 5 + 0.5)
+          .style('opacity', 0.6)
+          .on('mouseover', (event, d) => {
+            this.tooltip.transition().duration(200).style('opacity', 0.9);
+            this.tooltip.html(`<strong>Weight:</strong> ${d.value.toFixed(4)}<br><strong>From:</strong> Neuron ${d.sourceIndex + 1} (Layer ${d.sourceLayer + 1})<br><strong>To:</strong> Neuron ${d.targetIndex + 1} (Layer ${d.targetLayer + 1})`)
+              .style('left', (event.pageX + 10) + 'px')
+              .style('top', (event.pageY - 28) + 'px');
+          })
+          .on('mouseout', () => {
+            this.tooltip.transition().duration(500).style('opacity', 0);
+          });
+        const nodeGroup = networkGroup.append('g').attr('class', 'nodes');
+        nodeGroup.selectAll('.node')
+          .data(nodes)
+          .enter()
+          .append('g')
+          .attr('class', 'node')
+          .attr('transform', d => `translate(${d.x}, ${d.y})`)
+          .each(function(d) {
+            let normalizedValue;
+            if (d.isInput) {
+              normalizedValue = Math.max(0, Math.min(1, (d.value + 10) / 20));
+            } else {
+              switch(d3.select('#activation-function').property('value')) {
+                case 'sigmoid': normalizedValue = d.value; break;
+                case 'tanh': normalizedValue = (d.value + 1) / 2; break;
+                case 'relu':
+                case 'leaky_relu': normalizedValue = Math.min(1, d.value / 5); break;
+                default: normalizedValue = Math.max(0, Math.min(1, (d.value + 5) / 10));
+              }
+            }
+            const colorScale = d3.scaleSequential(d3.interpolateBlues).domain([0, 1]);
+            d3.select(this).append('circle')
+              .attr('r', d.radius)
+              .style('fill', colorScale(normalizedValue))
+              .style('stroke', d.isInput ? '#007aff' : d.isOutput ? '#ff2d55' : '#5ac8fa')
+              .style('stroke-width', 2)
+              .style('cursor', 'pointer')
+              .on('mouseover', function(event, d) {
+                d3.select(this).style('stroke-width', 3).style('stroke', '#ffcc00');
+                const tooltip = d3.select('.tooltip');
+                tooltip.transition().duration(200).style('opacity', 0.9);
+                let tooltipContent = `<strong>${d.isInput ? 'Input' : d.isOutput ? 'Output' : 'Hidden'} Neuron</strong><br><strong>Layer:</strong> ${d.layer + 1}<br><strong>Neuron:</strong> ${d.index + 1}<br><strong>Activation:</strong> ${d.value.toFixed(4)}`;
+                if (!d.isInput) {
+                  tooltipContent += `<br><strong>Weighted Sum:</strong> ${d.rawValue.toFixed(4)}`;
+                  tooltipContent += `<br><strong>Bias:</strong> ${d3.select('body').node().__data__.biases[d.layer - 1][d.index].toFixed(4)}`;
+                }
+                tooltip.html(tooltipContent)
+                  .style('left', (event.pageX + 10) + 'px')
+                  .style('top', (event.pageY - 28) + 'px');
+              })
+              .on('mouseout', function() {
+                d3.select(this).style('stroke-width', 2).style('stroke', d.isInput ? '#007aff' : d.isOutput ? '#ff2d55' : '#5ac8fa');
+                d3.select('.tooltip').transition().duration(500).style('opacity', 0);
+              })
+              .on('click', (event, d) => {
+                if (d.isInput) {
+                  const value = prompt(`Set value for input neuron ${d.index + 1}:`, d.value);
+                  if (value !== null) {
+                    const newValue = parseFloat(value);
+                    if (!isNaN(newValue)) {
+                      this.inputValues[d.index] = newValue;
+                      const inputElement = document.querySelector(`#input-matrix-container input:nth-child(${d.index + 1})`);
+                      if (inputElement) { inputElement.value = newValue; }
+                      this.updateNetwork();
+                    }
+                  }
+                }
+              });
+            if (!d.isInput) {
+              d3.select(this).append('text')
+                .attr('text-anchor', 'middle')
+                .attr('y', -d.radius - 5)
+                .attr('font-size', '10px')
+                .text(d.value.toFixed(2))
+                .style('fill', '#555')
+                .style('pointer-events', 'none');
+            }
+          });
+        const labelGroup = networkGroup.append('g').attr('class', 'labels');
+        for (let i = 0; i < this.config.layers.length; i++) {
+          const x = horizontalPadding + i * layerSpacing;
+          let label = i === 0 ? 'Input Layer' : i === this.config.layers.length - 1 ? 'Output Layer' : `Hidden Layer ${i}`;
+          labelGroup.append('text')
+            .attr('x', x)
+            .attr('y', 20)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '12px')
+            .attr('font-weight', 'bold')
+            .style('fill', '#34495e')
+            .text(label);
+          if (i > 0) {
+            let activationLabel = `(${this.config.activationFunction})`;
+            labelGroup.append('text')
+              .attr('x', x)
+              .attr('y', 35)
+              .attr('text-anchor', 'middle')
+              .attr('font-size', '10px')
+              .style('fill', '#7f8c8d')
+              .text(activationLabel);
+          }
+        }
+      }
+      handleResize() {
+        const container = document.getElementById('network-container');
+        this.width = container.clientWidth;
+        this.height = container.clientHeight;
+        this.svg.attr('width', this.width).attr('height', this.height);
+        this.updateVisualization();
+      }
+      startPerformanceTracking() {
+        document.getElementById('performance-indicator').textContent = 'Calculating...';
+        this.lastUpdateTime = performance.now();
+        this.updateCount = 0;
+        if (this.fpsUpdateInterval) { clearInterval(this.fpsUpdateInterval); }
+        this.fpsUpdateInterval = setInterval(() => {
+          const now = performance.now();
+          if (this.updateCount > 0) {
+            const fps = Math.round((this.updateCount * 1000) / (now - this.lastUpdateTime));
+            document.getElementById('performance-indicator').textContent = `${fps} FPS`;
+            this.updateCount = 0;
+            this.lastUpdateTime = now;
+          }
+        }, 1000);
+      }
+      updateActivationChart() {
+        const chartDiv = document.getElementById('activation-chart');
+        chartDiv.innerHTML = '';
+        const margin = {top: 10, right: 10, bottom: 30, left: 40},
+              width = 300 - margin.left - margin.right,
+              height = 200 - margin.top - margin.bottom;
+        const svgChart = d3.select(chartDiv).append('svg')
+          .attr('width', width + margin.left + margin.right)
+          .attr('height', height + margin.top + margin.bottom)
+          .append('g')
+          .attr('transform', `translate(${margin.left},${margin.top})`);
+        const xScale = d3.scaleLinear().domain([-6, 6]).range([0, width]);
+        const yScale = d3.scaleLinear().domain([-1, 6]).range([height, 0]);
+        const line = d3.line().x(d => xScale(d.x)).y(d => yScale(d.y));
+        let data = [];
+        for (let x = -6; x <= 6; x += 0.1) {
+          let y;
+          switch(this.config.activationFunction) {
+            case 'relu': y = Math.max(0, x); break;
+            case 'sigmoid': y = 1 / (1 + Math.exp(-x)); break;
+            case 'tanh': y = Math.tanh(x); break;
+            case 'leaky_relu': y = x > 0 ? x : 0.01 * x; break;
+            case 'swish': y = x / (1 + Math.exp(-x)); break;
+            case 'gelu': y = 0.5 * x * (1 + Math.tanh(Math.sqrt(2/Math.PI) * (x + 0.044715 * Math.pow(x, 3)))); break;
+            default: y = Math.max(0, x);
+          }
+          data.push({x: x, y: y});
+        }
+        svgChart.append('path')
+          .datum(data)
+          .attr('fill', 'none')
+          .attr('stroke', '#007aff')
+          .attr('stroke-width', 2)
+          .attr('d', line);
+        svgChart.append('g')
+          .attr('transform', `translate(0,${height})`)
+          .call(d3.axisBottom(xScale));
+        svgChart.append('g')
+          .call(d3.axisLeft(yScale));
+      }
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      window.mlpApp = new MLPVisualization();
+      document.body.__data__ = window.mlpApp;
+    });
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      window.mlpApp = new MLPVisualization();
+      document.body.__data__ = window.mlpApp;
+    }
+  </script>
+</body>
+</html>
